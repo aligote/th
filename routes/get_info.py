@@ -6,42 +6,55 @@ from services.yandex_api import get_route_info
 
 router = APIRouter()
 
-@router.get("/trip_price_router")
-async def get_price_estimate(
-    #44.926696, 37.321312 Россиянка   до 44.881016, 37.336812 Красная площадь
-    # from_lat: float = 44.926696,                           #Query(...),
-    # from_lon: float = 37.321312,                      #Query(...),
 
-    # to_lat: float =   44.881016,
-    #                                                     #Query(...),
-    # to_lon: float =   37.336812
-                                                #Query(...),
-    #service_class: str = Query("econom")
-    # request with validations Query - lib from fastapi
-    from_lat: float = Query(..., description="Широта точки отправления"),
-    from_lon: float = Query(..., description="Долгота точки отправления"),
-    to_lat: float = Query(..., description="Широта точки назначения"),
-    to_lon: float = Query(..., description="Долгота точки назначения"),
-    # service_class: str = Query("econom", description="Класс поездки")
-        ):
-    return await get_route_info(from_lat, from_lon, to_lat, to_lon)
-
-
-
-# Модель для одного маршрута
-class Route(BaseModel):
+class RouteWithName(BaseModel):
+    name_from: str
+    name_to: str
     from_lat: float
     from_lon: float
     to_lat: float
     to_lon: float
 
-# Общая функция для параллельного вызова
-async def fetch_prices(routes: List[Route]):
-    tasks = [get_route_info(r.from_lat, r.from_lon, r.to_lat, r.to_lon) for r in routes]
-    return await asyncio.gather(*tasks)
+async def get_route_info_extended(from_lat, from_lon, to_lat, to_lon):
+    # Здесь вызываешь свой get_route_info, 
+    # предположим, он возвращает словарь с ценой, временем, расстоянием, etc.
+    # Пример возвращаемых данных:
+    # {
+    #   "price": 212,
+    #   "duration": 10,      # в минутах
+    #   "distance": 4,       # в километрах
+    #   "price_per_min": 22,
+    #   "price_per_km": 52
+    # }
+    return await get_route_info(from_lat, from_lon, to_lat, to_lon)
 
-# Новый POST-роутер для списка маршрутов
+def calculate_efficiency(price_per_min, price_per_km):
+    # Пример: среднее значение коэффициента из двух показателей
+    # Можно адаптировать под свою логику
+    max_price_per_min = 50  # пример максимума для нормализации
+    max_price_per_km = 100
+    norm_min = price_per_min / max_price_per_min
+    norm_km = price_per_km / max_price_per_km
+    coeff = (norm_min + norm_km) / 2  # усреднённый коэффициент (0..1)
+    return round(coeff * 100, 1)  # в процентах
+
 @router.post("/trip_price_router")
-async def get_prices_post(routes: List[Route]):
-    return await fetch_prices(routes)
+async def get_prices_post(routes: List[RouteWithName]):
+    results = await asyncio.gather(*[
+        get_route_info_extended(r.from_lat, r.from_lon, r.to_lat, r.to_lon)
+        for r in routes
+    ])
 
+    response = []
+    for r, info in zip(routes, results):
+        coeff = calculate_efficiency(info["price_per_min"], info["price_per_km"])
+        response.append({
+            "route": f'{r.name_from} - {r.name_to}',
+            "price": info["price"],
+            "duration_min": info["duration"],
+            "distance_km": info["distance"],
+            "price_per_min": info["price_per_min"],
+            "price_per_km": info["price_per_km"],
+            "efficiency_coeff_percent": coeff
+        })
+    return response
