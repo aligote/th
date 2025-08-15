@@ -1,12 +1,10 @@
-from fastapi import APIRouter, Query
+from fastapi import APIRouter
 from typing import List
 from pydantic import BaseModel
 import asyncio
 from services.yandex_api import get_route_info
-import math
 
 router = APIRouter()
-
 
 class RouteWithName(BaseModel):
     # name_from: str
@@ -16,53 +14,11 @@ class RouteWithName(BaseModel):
     to_lat: float
     to_lon: float
 
-async def get_route_info_extended(from_lat, from_lon, to_lat, to_lon):
-    # Здесь вызываешь свой get_route_info, 
-    # предположим, он возвращает словарь с ценой, временем, расстоянием, etc.
-    # Пример возвращаемых данных:
-    # {
-    #   "price": 212,
-    #   "duration": 10,      # в минутах
-    #   "distance": 4,       # в километрах
-    #   "price_per_min": 22,
-    #   "price_per_km": 52
-    # }
-    res = await get_route_info(from_lat, from_lon, to_lat, to_lon)
-    # print('res ---------> ', res)
-    return res
-
-# def calculate_efficiency(price_per_min, price_per_km):
-#     # Пример: среднее значение коэффициента из двух показателей
-#     # Можно адаптировать под свою логику
-#     max_price_per_min = 50  # пример максимума для нормализации
-#     max_price_per_km = 100
-#     norm_min = price_per_min / max_price_per_min
-#     norm_km = price_per_km / max_price_per_km
-#     coeff = (norm_min + norm_km) / 2  # усреднённый коэффициент (0..1)
-#     return round(coeff * 100, 1)  # в процентах
-
-
-# def calculate_efficiency(rub_per_min, rub_per_km):
-#     return round(math.log1p(rub_per_min) + math.log1p(rub_per_km), 1)
-
 @router.post("/trip_price_router")
 async def get_prices_post(routes: List[RouteWithName]):
     results = await asyncio.gather(*[
-        get_route_info_extended(r.from_lon, r.from_lat, r.to_lon, r.to_lat)
+        get_route_info(r.from_lon, r.from_lat, r.to_lon, r.to_lat)
         for r in routes
     ])
 
-    response = []
-    for r, info in zip(routes, results):
-        # coeff = calculate_efficiency(info["rub_per_min"], info["rub_per_km"])
-        response.append({
-            # "route": f'{r.name_from} - {r.name_to}',
-            "price": info["price"],
-            "duration_min": info["duration_min"],
-            "distance_km": info["distance_km"],
-            # "price_per_min": info["rub_per_min"],
-            # "price_per_km": info["rub_per_km"],
-            # "efficiency_coeff_percent": coeff
-        })
-        print("response --->", response)
-    return response
+    return results
